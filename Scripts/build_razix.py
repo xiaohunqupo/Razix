@@ -20,29 +20,62 @@ def run_command(cmd, cwd=None):
         print(f"[ERROR] Command failed with exit code {e.returncode}")
         sys.exit(e.returncode)
 
-def build_windows(config, github_ci=False):
-    if github_ci:
-        # Use Enterprise path for GitHub CI
-        msbuild_path = r"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\MSBuild.exe"
-    else:
-        # Use Community path for local development
-        msbuild_path = r"C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe"
-    
-    if not os.path.exists(msbuild_path):
-        print(f"[ERROR] MSBuild not found at {msbuild_path}. Please check the path.")
-        sys.exit(1)
+def is_inside_scripts_dir():
+    # Modify this according to your actual detection logic
+    return os.path.basename(os.getcwd()).lower() == "scripts"
 
-    # Recursively find all .sln files in ./build
-    for root, _, files in os.walk("./build"):
+def run_command(cmd):
+    print(f"[COMMAND] {' '.join(cmd)}")
+    result = subprocess.run(cmd, shell=False)
+    if result.returncode != 0:
+        print(f"[ERROR] Command failed with exit code {result.returncode}")
+        sys.exit(result.returncode)
+
+def build_windows(config, github_ci=False):
+    print(f"[INFO] Starting Windows build with config: {config}, GitHub CI: {github_ci}")
+
+    # Choose MSBuild path based on context
+    if github_ci:
+        msbuild_path = r"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\MSBuild.exe"
+        print(f"[INFO] Using GitHub CI Enterprise MSBuild path: {msbuild_path}")
+    else:
+        msbuild_path = r"C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe"
+        print(f"[INFO] Using local Community MSBuild path: {msbuild_path}")
+    
+    # Check if MSBuild exists
+    if not os.path.exists(msbuild_path):
+        print(f"[ERROR] MSBuild not found at {msbuild_path}. Please verify Visual Studio installation.")
+        sys.exit(1)
+    
+    # Determine the build directory
+    build_dir = "../build" if is_inside_scripts_dir() else "./build"
+    print(f"[INFO] Build directory resolved to: {build_dir}")
+
+    if not os.path.exists(build_dir):
+        print(f"[WARNING] Build directory {build_dir} does not exist. No solution files to build.")
+        sys.exit(0)
+
+    found_any_solution = False
+
+    # Walk and compile all solution files
+    for root, _, files in os.walk(build_dir):
         for file in files:
             if file.endswith(".sln"):
+                found_any_solution = True
                 sln_path = os.path.join(root, file)
+                print(f"[INFO] Found solution: {sln_path}")
+                print(f"[INFO] Running MSBuild on: {sln_path}")
                 run_command([
                     msbuild_path,
                     sln_path,
                     f"/p:Configuration={config}",
                     "/m"
                 ])
+
+    if not found_any_solution:
+        print(f"[WARNING] No .sln files found in {build_dir}")
+    else:
+        print(f"[SUCCESS] Finished building all .sln files in {build_dir}")
 
 def has_xcode_targets(xcodeproj_path):
     try:
